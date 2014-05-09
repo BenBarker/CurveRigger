@@ -1,4 +1,5 @@
-'''Curve Rigging Tool. Drag this script to shelf, or execute from editor to run'''
+
+'''Cable Rigging Tool. Drag this script to shelf, or execute from editor to run'''
 import maya.cmds as cmds
 
 class RigCurveTool(object):
@@ -16,15 +17,55 @@ class RigCurveTool(object):
     def __init__(self):
         object.__init__(self)
         self.widgets = dict()
+        self.optionVars = dict()
+        self.defaults = dict()
+        #default UI Values
+        self.defaults['joints'] = 10
+        self.defaults['ctrls'] = 4
+        self.defaults['size']=0.1
+        self.defaults['spans']=10
+        self.defaults['width']=0.1
+        self.defaults['uMin']=0.0
+        self.defaults['uMax']=1.0
         self.showWindow()
         
     def showWindow(self):
         window = cmds.window(title='Rig Curve')
         cmds.columnLayout()
+
+        #Read stored options
+        if cmds.optionVar(exists='CableRigger_joints'):
+            defaultJoints = cmds.optionVar(q='CableRigger_joints')
+        else:
+            defaultJoints = self.defaults['joints']
+        if cmds.optionVar(exists='CableRigger_ctrls'):
+            defaultCtrls = cmds.optionVar(q='CableRigger_ctrls')
+        else:
+            defaultCtrls = self.defaults['ctrls']       
+        if cmds.optionVar(exists='CableRigger_size'):
+            defaultSize = cmds.optionVar(q='CableRigger_size')
+        else:
+            defaultSize = self.defaults['size']      
+        if cmds.optionVar(exists='CableRigger_spans'):
+            defaultSpans = cmds.optionVar(q='CableRigger_spans')
+        else:
+            defaultSpans = self.defaults['spans']        
+        if cmds.optionVar(exists='CableRigger_width'):
+            defaultWidth = cmds.optionVar(q='CableRigger_width')
+        else:
+            defaultWidth = self.defaults['width']    
+        if cmds.optionVar(exists='CableRigger_uMin'):
+            defaultuMin = cmds.optionVar(q='CableRigger_uMin')
+        else:
+            defaultuMin = self.defaults['uMin']   
+        if cmds.optionVar(exists='CableRigger_uMax'):
+            defaultuMax = cmds.optionVar(q='CableRigger_uMax')
+        else:
+            defaultuMax = self.defaults['uMax']  
         
         #Curve Selector
         sel = cmds.ls(sl=True)
-        initialText = 'Enter Curve Name'
+        initialText = ''
         if sel:
             initialText = sel[0]
         self.widgets['curveNameGrp'] = cmds.textFieldButtonGrp( 
@@ -33,32 +74,63 @@ class RigCurveTool(object):
             buttonLabel='<<<<',
             bc=self.curveNameButtonPush 
             )
+            
+                 
+        #Geo
+        sel = cmds.ls(sl=True)
+        initialText = ''
+        self.widgets['geoNameGrp'] = cmds.textFieldButtonGrp( 
+            label='Geo:', 
+            text=initialText, 
+            buttonLabel='<<<<',
+            bc=self.geoNameButtonPush 
+            )
+
         
-        #Other Widgets
+        #Other Widgets\
+        cmds.button(label='Reset below to default',width=500,command=self.setDefaults)
         cmds.text(label="Adjust Rig:")
         self.widgets['jointGrp']  = cmds.intSliderGrp(
             label='Joints', 
             field=True,
             fieldMinValue=2,
             minValue=2,
-            maxValue=50,
-            value=10
+            maxValue=150,
+            value=defaultJoints
         )
         self.widgets['controlsGrp'] = cmds.intSliderGrp(
             label='Controls', 
             field=True,
             fieldMinValue=2,
             minValue=2,
-            maxValue=10,
-            value=4
+            maxValue=50,
+            value=defaultCtrls
         )
         self.widgets['sizeGrp'] = cmds.floatSliderGrp(
             label='Control Size',
             field=True,
             fieldMinValue=0.01,
-            minValue=1.0,
+            minValue=.1,
             maxValue=10.0,
-            value=2.0
+            value=defaultSize
+        )        
+        self.widgets['uMinGrp'] = cmds.floatSliderGrp(
+            label='U min',
+            field=True,
+            fieldMinValue=0.0,
+            minValue=0,
+            maxValue=1.0,
+            fieldMaxValue=1.0,
+            value=defaultuMin
+        ) 
+        self.widgets['uMaxGrp'] = cmds.floatSliderGrp(
+            label='U max',
+            field=True,
+            fieldMinValue=0,
+            minValue=0,
+            maxValue=1,
+            fieldMaxValue=1,
+            value=defaultuMax
         )
         cmds.text(label='')
         cmds.text(label="Adjust NURBS Strip:")
@@ -67,18 +139,20 @@ class RigCurveTool(object):
             field=True,
             fieldMinValue=2,
             minValue=2,
-            maxValue=50,
-            value=8
+            maxValue=150,
+            value=defaultSpans
         )
         self.widgets['widthGrp'] = cmds.floatSliderGrp( 
             label='Strip Width', 
             field=True, 
-            fieldMinValue=0.01,
+            fieldMinValue=0.005,
             minValue=0.01, 
-            maxValue=5.0,value=1.0 
+            maxValue=5.0,
+            value=defaultWidth
         )
         cmds.text(label='')
-        cmds.button(label="Rig Curve!",h=20,w=500,align='center',command=self.doIt)
+        cmds.button(label="\nRig Curve!",h=60,w=500,command=self.doIt)
+        cmds.button(label="Wire Geo Only (Rig already built)",h=30,w=500,command=self.wireOnly)
         cmds.showWindow(window)
         
     def curveNameButtonPush(self,*args,**kwargs):
@@ -88,6 +162,48 @@ class RigCurveTool(object):
             raise RuntimeError("select a curve")
         cmds.textFieldButtonGrp(self.widgets['curveNameGrp'],e=True,text=sel[0])
         
+    def geoNameButtonPush(self,*args,**kwargs):
+        '''pops the selection into the text field'''
+        sel = cmds.ls(sl=True)
+        if not sel:
+            raise RuntimeError("select the cable geo")
+        cmds.textFieldButtonGrp(self.widgets['geoNameGrp'],e=True,text=sel[0])
+        
+    def setDefaults(self,*args,**kwargs):
+        '''sets the sliders to defaults'''
+        cmds.intSliderGrp(self.widgets['jointGrp'],e=True,v=self.defaults['joints'])
+        cmds.intSliderGrp( self.widgets['controlsGrp'], e=True,v=self.defaults['ctrls'])
+        cmds.floatSliderGrp(self.widgets['sizeGrp'], e=True,v=self.defaults['size'])
+        cmds.intSliderGrp(self.widgets['spansGrp'], e=True,v=self.defaults['spans'])
+        cmds.floatSliderGrp(self.widgets['widthGrp'] , e=True,v=self.defaults['width'])
+        cmds.floatSliderGrp(self.widgets['uMinGrp'] , e=True,v=self.defaults['uMin'])
+        cmds.floatSliderGrp(self.widgets['uMaxGrp'] , e=True,v=self.defaults['uMax'])
+
+    def wireOnly(self,*args,**kwargs):
+        '''if the rig already exists, just wire geo'''
+        crv = cmds.textFieldButtonGrp(self.widgets["curveNameGrp"],q=True,text=True)
+        geo = cmds.textFieldButtonGrp(self.widgets["geoNameGrp"],q=True,text=True)
+
+        if not crv or not geo or not cmds.objExists(geo):
+            raise RuntimeError("Specify a curve and a geo to wire to an already existing rig")
+
+        #Find nodes based on name, do some error checking
+        rigNode = crv + "_Rig"
+        hiddenStuff = crv + "_NOTOUCH"
+        wireCrv = crv + "_skinned"
+        if not cmds.objExists(rigNode):
+            raise RuntimeError("%s not found in scene, rig not built yet?"%rigNode)
+        allKids = cmds.listRelatives(rigNode,ad=True)
+        if not cmds.objExists(wireCrv) and not wireCrv in allKids:
+            raise RuntimeError("wire curve %s not found under %s, wire curve deleted or not rigged?" %(wireCrv,rigNode))
+        if not cmds.objExists(hiddenStuff) and not hiddenStuff in allKids:
+            raise RuntimeError("Couldn't find the NOTOUCH node for this rig, curve not rigged?")
+
+        #Make wire
+        cmds.wire(geo,w=wireCrv,n=crv + "_wire",dds=(0,10),en=1.0,ce=0,li=0)
+        print "wire done"
+
+
     def doIt(self,*args,**kwargs):
         '''reads widget values and calls rigFromCurve'''
         joints = cmds.intSliderGrp(self.widgets["jointGrp"],q=True,v=True)
@@ -96,6 +212,20 @@ class RigCurveTool(object):
         spans = cmds.intSliderGrp(self.widgets["spansGrp"],q=True,v=True)
         width = cmds.floatSliderGrp(self.widgets["widthGrp"],q=True,v=True)
         crv = cmds.textFieldButtonGrp(self.widgets["curveNameGrp"],q=True,text=True)
+        geo = cmds.textFieldButtonGrp(self.widgets["geoNameGrp"],q=True,text=True)
+        uMin = cmds.floatSliderGrp(self.widgets["uMinGrp"],q=True,v=True)
+        uMax = cmds.floatSliderGrp(self.widgets["uMaxGrp"],q=True,v=True)
+
+        
+        #save options
+        cmds.optionVar( iv=('CableRigger_joints', joints))
+        cmds.optionVar( iv=('CableRigger_ctrls', ctrls))
+        cmds.optionVar( fv=('CableRigger_size', size))
+        cmds.optionVar( iv=('CableRigger_spans', spans))
+        cmds.optionVar( fv=('CableRigger_width', width))
+        cmds.optionVar( fv=('CableRigger_uMin', uMin))
+        cmds.optionVar( fv=('CableRigger_uMax', uMax))
+
         
         if not crv or not cmds.objExists(crv):
             raise RuntimeError("%s not found in scene" % crv)
@@ -104,9 +234,18 @@ class RigCurveTool(object):
         if not shapes or cmds.nodeType(shapes[0]) != 'nurbsCurve':
             raise RuntimeError("Selection is not a curve")
             
-        self.rigFromCurve(crv,spans,joints,ctrls,width,size)
+        self.rigFromCurve(crv,numSpans=spans,
+            numJoints=joints,
+            numCtrls=ctrls,
+            stripWidth=width,
+            ctrlWidth=size,
+            geo=geo,
+            uMin=uMin,
+            uMax=uMax
+        )
+        print "cable rig complete"
 
-    def rigFromCurve(self,crv,numSpans=8,numJoints=10,numCtrls=5,stripWidth = 1.0,ctrlWidth=2.0):
+    def rigFromCurve(self,crv,numSpans=8,numJoints=10,numCtrls=5,stripWidth = 1.0,ctrlWidth=2.0,geo=None,uMin=0.0,uMax=1.0):
         '''make a cable rig from the given curve
             numSpans = number of spans in Nurbs strip
             numJoints = number of joints riding on nurbs strip
@@ -117,13 +256,13 @@ class RigCurveTool(object):
     
         shapes = cmds.listRelatives(crv,s=1)
         crvShape = shapes[0]
-
         #Make rig top nulls to parent stuff under
         topNull = cmds.createNode('transform',n=crv + "_Rig")
         hiddenStuff = cmds.createNode('transform',n=crv + "_NOTOUCH",p=topNull)
         cmds.setAttr(hiddenStuff + ".inheritsTransform", 0)
         cmds.setAttr(hiddenStuff + ".visibility", 0)
         cmds.addAttr(topNull, ln="stretchAmount",dv=1.0,min=0,max=1)
+        cmds.addAttr(topNull, ln='slideAmount',dv=0.0)
 
         #make nurbs strip using extrude
         crossCurve = cmds.curve(d=1,p=[(0,0,-0.5 * stripWidth),(0,0,0.5 * stripWidth)],k=(0,1))
@@ -179,9 +318,16 @@ class RigCurveTool(object):
             cmds.select(clear=True)
             jnt = cmds.joint(p=(0,0,0),n=crv + "_driverJoint%02d"%i) 
             locator = cmds.spaceLocator(n=crv + "driverLoc%02d"%i)[0]
+            cmds.setAttr(locator + ".localScale",stripWidth,stripWidth,stripWidth)
             cmds.parent(locator,hiddenStuff)
             percentage = float(i)/(numJoints-1.0)
-            posNode,aimCns = self.attachObjToSurf(locator,surf,offsetCrv,stretchAmountNode,percentage)
+            print "percentage:", percentage
+            print i
+            if i > 1 and i < numJoints-2:
+                percentage = uMin + (percentage * (uMax-uMin))
+                print "\tinterp percent", percentage
+            posNode,aimCnss,moPath,slider = self.attachObjToSurf(locator,surf,offsetCrv,stretchAmountNode,percentage)
+            cmds.connectAttr(topNull + ".slideAmount", slider + ".i2")
             cmds.parentConstraint(locator,jnt,mo=False)
             if len(skinJoints):
                 cmds.parent(jnt,skinJoints[-1])
@@ -201,7 +347,9 @@ class RigCurveTool(object):
             if i == 0:
                 zero,ctrl = self.makeCubeCtrl(crv + "_Ctrl%02d"%i,size=ctrlWidth*1.8)
                 cmds.addAttr(ctrl,ln="noStretch",dv=0.0,min=0,max=1,k=1,s=1)
+                cmds.addAttr(ctrl,ln='slideAmount',dv=0.0,min=-1.0,max=1.0,k=1,s=1)
                 cmds.connectAttr(ctrl + ".noStretch",topNull + ".stretchAmount")
+                cmds.connectAttr(ctrl + ".slideAmount",topNull + ".slideAmount")
             else:
                 zero,ctrl = self.makeCubeCtrl(crv + "_Ctrl%02d"%i,size=ctrlWidth)
             
@@ -213,6 +361,10 @@ class RigCurveTool(object):
         
             #briefly attach ctrls to strip to align them
             percentage = float(i)/(numCtrls-1.0)
+            print "ctrl percentage:",percentage
+            if i > 0 and i < numCtrls-1:
+                percentage = uMin + (percentage * (uMax-uMin))
+                print '\tinterp percentage:', percentage
             cmds.delete(self.attachObjToSurf(zero,surf,offsetCrv,stretchAmountNode,percentage))
             ctrls.append(ctrl)
             cmds.parent(jnt,stripJointParent)
@@ -228,6 +380,25 @@ class RigCurveTool(object):
             sm=0, #standard bind method
             ih=True, #ignore hierarchy
         )    
+        
+        #rebuild curve and skin to joints
+        newCurve = cmds.duplicate(crv)[0]
+        newCurve = cmds.rename(newCurve, crv + "_skinned")
+        cmds.parent(newCurve, topNull)
+        cmds.rebuildCurve(newCurve,ch=0,rpo=1,rt=0,end=1,kr=0,kcp=0,kep=1,kt=0,s=numJoints-2,d=3,tol=0.01)
+        skinObjs = skinJoints + [newCurve]
+        cmds.skinCluster(skinObjs,
+            bindMethod = 0,
+            sm = 0,
+            ih=True,
+            mi=1
+            )
+        if geo:
+            wireDef,wireCrv = cmds.wire(geo,w=newCurve,n=crv + "_wire",dds=(0,10),en=1.0,ce=0,li=0)
+            print wireDef
+            cmds.parent(wireCrv,hiddenStuff)
+            if cmds.objExists(wireCrv+"BaseWire"):
+                cmds.parent(wireCrv+"BaseWire",hiddenStuff)
 
     def attachObjToSurf(self,obj,surf,path,stretchAmountNode,percentage):
         '''Given an object and a surface, attach object.
@@ -236,6 +407,7 @@ class RigCurveTool(object):
         #Make nodes
         aimCns = cmds.createNode('aimConstraint',n=obj + "Cns")
         moPath = cmds.createNode('motionPath', n=obj + "MoPath")
+        slider = cmds.createNode('addDoubleLinear',n=obj + "Slider")
         cmds.setAttr(moPath + ".uValue", percentage)
         closePnt = cmds.createNode('closestPointOnSurface', n=obj + "ClsPnt")
         posNode1 = cmds.pointOnSurface(surf,
@@ -248,7 +420,7 @@ class RigCurveTool(object):
             parameterU=0.5, 
             turnOnPercentage=True
         ) 
-    
+        
         #Connect motion Path to closest point, then closest point to surface info node
         cmds.setAttr(moPath + ".fractionMode", 1) #distance instead of param
         cmds.connectAttr(path + ".worldSpace[0]", moPath + ".geometryPath")
@@ -258,13 +430,14 @@ class RigCurveTool(object):
         cmds.connectAttr(moPath + ".zCoordinate", closePnt + ".ipz")
         cmds.connectAttr(closePnt + ".result.u", posNode1 + ".u")
         cmds.connectAttr(closePnt + ".result.v", posNode1 + ".v") 
-    
+        
         #Create Stretch Setup using stretchAmountNode node
         stretchCtrl = cmds.createNode("multDoubleLinear", n=obj + "StretchCtrl")
         cmds.setAttr(stretchCtrl + ".i1", percentage)
         cmds.connectAttr(stretchAmountNode + ".outputX",stretchCtrl + ".i2")
-        cmds.connectAttr(stretchCtrl + ".o", moPath + ".uValue")
-    
+        cmds.connectAttr(stretchCtrl + ".o", slider + ".i1")
+        cmds.connectAttr(slider + ".o", moPath + ".uValue")
+        
         #Hook up surface info attrs to aimCns to calculate rotation values
         #Then hook pointOnSurface and aimCns to locator
         posNode1 = cmds.rename(posNode1,obj + 'SurfInfo')
@@ -275,7 +448,7 @@ class RigCurveTool(object):
         for axis in ('X','Y','Z'):
             cmds.connectAttr(aimCns + ".constraintRotate" + axis, obj + ".rotate" + axis)
         cmds.parent(aimCns,obj) #just for tidyness, doesn't matter
-        return (posNode1,aimCns)
+        return (posNode1,aimCns,moPath,slider)
 
     def makeCubeCtrl(self,name,size=1.0):
         '''
@@ -314,7 +487,5 @@ class RigCurveTool(object):
             for axis in ('x','y','z'):
                 cmds.setAttr(obj + ".%s%s"%(attr,axis), keyable=False,channelBox=False,lock=lock)
         cmds.setAttr(obj + ".v", keyable=False,channelBox=False)
-
- 
 #Run the tool   
 RigCurveTool()
