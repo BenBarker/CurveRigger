@@ -17,7 +17,6 @@ class RigCurveTool(object):
     def __init__(self):
         object.__init__(self)
         self.widgets = dict()
-        self.optionVars = dict()
         self.defaults = dict()
         #default UI Values
         self.defaults['joints'] = 10
